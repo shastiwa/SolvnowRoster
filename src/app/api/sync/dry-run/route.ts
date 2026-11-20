@@ -22,9 +22,16 @@ export async function POST(req: NextRequest) {
           performedBy: user.loginName,
         });
 
+    const evaluatedCount = results.length;
+    const updatesRequiredCount = results.filter(
+      (r) => r.actionPolicy === "UPDATE_REQUIRED"
+    ).length;
+
     return NextResponse.json({
       mode: "DRY_RUN",
       count: results.length,
+      evaluatedCount,
+      updatesRequiredCount,
       results,
     });
   } catch (err: unknown) {
