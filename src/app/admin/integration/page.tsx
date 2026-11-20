@@ -218,6 +218,45 @@ export default function AdminIntegrationPage() {
     }
   };
 
+  const handleLiveAvailabilitySync = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to push real assignment availability updates to BMC Helix for all analysts with pending roster changes?"
+      )
+    ) {
+      return;
+    }
+    try {
+      setSyncing("live-sync");
+      setFeedback(null);
+      const res = await fetch("/api/sync/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const successes = (data.results || []).filter(
+          (r: any) => r.result === "SUCCESS" && r.operationAttempted === "UPDATE"
+        ).length;
+        const failures = (data.results || []).filter(
+          (r: any) => r.result === "FAILURE"
+        ).length;
+        setFeedback({
+          type: failures > 0 ? "error" : "success",
+          text: `Live Availability Sync completed! Updated ${successes} analyst availability status in BMC Helix (${failures} failures across ${data.count || 0} evaluated targets).`,
+        });
+        loadManagedGroups();
+      } else {
+        setFeedback({ type: "error", text: `Live sync failed: ${data.error}` });
+      }
+    } catch (err: any) {
+      setFeedback({ type: "error", text: `Error: ${err.message}` });
+    } finally {
+      setSyncing(null);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div className="pb-2 border-b border-slate-200">
@@ -309,9 +348,17 @@ export default function AdminIntegrationPage() {
           <button
             onClick={handleDryRun}
             disabled={syncing !== null}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
           >
-            {syncing === "dry-run" ? "Simulating..." : "⚡ Trigger Availability Dry-Run"}
+            {syncing === "dry-run" ? "Simulating..." : "🔍 Trigger Availability Dry-Run"}
+          </button>
+
+          <button
+            onClick={handleLiveAvailabilitySync}
+            disabled={syncing !== null}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
+          >
+            {syncing === "live-sync" ? "Pushing Live..." : "⚡ Execute Live Availability Sync"}
           </button>
         </div>
       </div>

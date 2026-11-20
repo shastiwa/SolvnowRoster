@@ -17,6 +17,7 @@ import {
 } from "./not-configured-provider";
 import {
   RealBmcAuthenticationProvider,
+  RealBmcAvailabilityProvider,
   RealBmcDirectoryProvider,
 } from "./helix-provider";
 
@@ -32,6 +33,7 @@ class BmcClientManager {
 
   private realAuth = new RealBmcAuthenticationProvider();
   private realDirectory = new RealBmcDirectoryProvider(this.realAuth);
+  private realAvailability = new RealBmcAvailabilityProvider(this.realAuth);
 
   public static getInstance(): BmcClientManager {
     if (!BmcClientManager.instance) {
@@ -65,12 +67,12 @@ class BmcClientManager {
       };
     }
 
-    // Use Real Authentication and Directory Provider;
-    // Availability update remains safely guarded until exact form/field specs are confirmed
+    // Live BMC Helix Provider with real AR-JWT auth, CTM:People/Support Group directory,
+    // and CTM:Support Group Association assignment availability updates
     return {
       auth: this.realAuth,
       directory: this.realDirectory,
-      availability: this.notConfiguredAvailability,
+      availability: this.realAvailability,
     };
   }
 

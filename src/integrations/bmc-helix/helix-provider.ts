@@ -374,3 +374,193 @@ export class RealBmcDirectoryProvider implements BmcDirectoryProvider {
     }
   }
 }
+
+export class RealBmcAvailabilityProvider implements BmcAvailabilityProvider {
+  public readonly implementationStatus: ImplementationStatus =
+    "VERIFIED_IMPLEMENTATION";
+
+  constructor(private authProvider: RealBmcAuthenticationProvider) {}
+
+  async getAvailability(
+    personId: string,
+    supportGroupId: string
+  ): Promise<BmcAvailabilityReadResult> {
+    const token = await this.authProvider.getValidToken();
+    if (!token) {
+      return {
+        success: false,
+        errorCode: "AUTH_REQUIRED",
+        errorMessage: "BMC Helix authentication failed",
+        httpStatus: 401,
+      };
+    }
+
+    const config = getAppConfig();
+    const baseUrl = config.BMC_BASE_URL?.replace(/\/+$/, "");
+    const form = "CTM:Support Group Association";
+    const q = `'Person ID'="${personId.replace(/"/g, '\\"')}" AND 'Support Group ID'="${supportGroupId.replace(/"/g, '\\"')}"`;
+    const fields = "values(Support Group Association ID,Assignment Availability,Status)";
+    const url = `${baseUrl}/api/arsys/v1/entry/${encodeURIComponent(form)}?q=${encodeURIComponent(
+      q
+    )}&fields=${encodeURIComponent(fields)}&limit=1`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `AR-JWT ${token}` },
+      });
+      if (!res.ok) {
+        return {
+          success: false,
+          httpStatus: res.status,
+          errorMessage: `HTTP ${res.status}`,
+        };
+      }
+      const data = await res.json();
+      const entries = data.entries || [];
+      if (entries.length === 0) {
+        return { success: false, errorMessage: "Association not found" };
+      }
+      const v = entries[0].values || {};
+      return {
+        success: true,
+        available: v["Assignment Availability"] === "Yes",
+      };
+    } catch (err: any) {
+      return { success: false, errorMessage: err.message };
+    }
+  }
+
+  async setAvailability(
+    personId: string,
+    supportGroupId: string,
+    available: boolean,
+    correlationId: string
+  ): Promise<BmcAvailabilityUpdateResult> {
+    const token = await this.authProvider.getValidToken();
+    if (!token) {
+      return {
+        success: false,
+        status: "FAILURE",
+        errorCode: "AUTH_REQUIRED",
+        errorMessage: "BMC Helix authentication failed",
+        httpStatus: 401,
+        correlationId,
+      };
+    }
+
+    const config = getAppConfig();
+    const baseUrl = config.BMC_BASE_URL?.replace(/\/+$/, "");
+    const form = "CTM:Support Group Association";
+    const q = `'Person ID'="${personId.replace(/"/g, '\\"')}" AND 'Support Group ID'="${supportGroupId.replace(/"/g, '\\"')}"`;
+    const findUrl = `${baseUrl}/api/arsys/v1/entry/${encodeURIComponent(form)}?q=${encodeURIComponent(
+      q
+    )}&limit=1`;
+
+    try {
+      // 1. Locate the Support Group Association record
+      const findRes = await fetch(findUrl, {
+        headers: { Authorization: `AR-JWT ${token}` },
+      });
+      if (!findRes.ok) {
+        return {
+          success: false,
+          status: "FAILURE",
+          httpStatus: findRes.status,
+          errorMessage: `Failed to find association record: HTTP ${findRes.status}`,
+          correlationId,
+        };
+      }
+      const findData = await findRes.json();
+      const entries = findData.entries || [];
+      if (entries.length === 0) {
+        return {
+          success: false,
+          status: "FAILURE",
+          errorMessage: `No association record found for Person ID ${personId} in Support Group ID ${supportGroupId}`,
+          correlationId,
+        };
+      }
+
+      const associationEntry = entries[0];
+      const entryId =
+        associationEntry.values?.["Support Group Association ID"] ||
+        associationEntry.id;
+
+      if (!entryId) {
+        return {
+          success: false,
+          status: "FAILURE",
+          errorMessage: "Unable to determine association Entry ID",
+          correlationId,
+        };
+      }
+
+      // 2. Perform PUT to update Assignment Availability
+      const updateUrl = `${baseUrl}/api/arsys/v1/entry/${encodeURIComponent(form)}/${encodeURIComponent(entryId)}`;
+      const updatePayload = {
+        values: {
+          "Assignment Availability": available ? "Yes" : "No",
+        },
+      };
+
+      SafeLogger.info("Updating BMC Helix Assignment Availability", {
+        entryId,
+        personId,
+        supportGroupId,
+        available: available ? "Yes" : "No",
+        correlationId,
+      });
+
+      const updateRes = await fetch(updateUrl, {
+        method: "PUT",
+        headers: {
+          Authorization: `AR-JWT ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updatePayload),
+      });
+
+      if (!updateRes.ok && updateRes.status !== 204) {
+        const errorText = await updateRes.text();
+        SafeLogger.error("Failed to update BMC Helix Assignment Availability", {
+          status: updateRes.status,
+          error: errorText,
+          correlationId,
+        });
+        return {
+          success: false,
+          status: "FAILURE",
+          httpStatus: updateRes.status,
+          errorMessage: `BMC update failed (${updateRes.status}): ${errorText}`,
+          correlationId,
+        };
+      }
+
+      SafeLogger.info("Successfully updated BMC Helix Assignment Availability in Remedy", {
+        entryId,
+        personId,
+        supportGroupId,
+        available: available ? "Yes" : "No",
+        correlationId,
+      });
+
+      return {
+        success: true,
+        status: "SUCCESS",
+        httpStatus: updateRes.status,
+        correlationId,
+      };
+    } catch (err: any) {
+      SafeLogger.error("Error setting availability in BMC Helix", {
+        error: err.message,
+        correlationId,
+      });
+      return {
+        success: false,
+        status: "FAILURE",
+        errorMessage: err.message,
+        correlationId,
+      };
+    }
+  }
+}
