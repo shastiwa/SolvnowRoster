@@ -46,18 +46,24 @@ export default function MyRosterPage() {
         if (!authData.user) return;
         const peopleRes = await fetch("/api/people");
         const peopleData = await peopleRes.json();
-        const me = (peopleData.people || []).find(
-          (p: any) => p.email.toLowerCase() === authData.user.email.toLowerCase()
+        const peopleList = Array.isArray(peopleData) ? peopleData : peopleData.people || [];
+        const me = peopleList.find(
+          (p: any) =>
+            p.email?.toLowerCase() === authData.user.email?.toLowerCase() ||
+            p.loginId?.toLowerCase() === authData.user.loginName?.toLowerCase()
         );
 
         if (me) {
-          const today = new Date().toISOString().split("T")[0];
-          const rosterRes = await fetch(`/api/roster?personId=${me.id}`);
+          const now = new Date();
+          const start = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0];
+          const end = new Date(now.getTime() + 14 * 86400000).toISOString().split("T")[0];
+          const rosterRes = await fetch(`/api/roster?personId=${me.id}&startDate=${start}&endDate=${end}`);
           const rosterData = await rosterRes.json();
+          const shifts = Array.isArray(rosterData) ? rosterData : rosterData.rosterEntries || [];
 
           setData({
             user: authData.user,
-            shifts: rosterData.rosterEntries || [],
+            shifts,
             memberships: me.supportGroups || [],
           });
         } else {

@@ -35,7 +35,7 @@ export default function SyncHistoryPage() {
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setRecords(data.syncHistories || []);
+        setRecords(Array.isArray(data) ? data : data.syncHistories || []);
       }
     } catch (err) {
       console.error("Failed to load sync history:", err);
