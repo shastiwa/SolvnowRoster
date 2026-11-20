@@ -39,6 +39,14 @@ export default function AdminIntegrationPage() {
   const [searching, setSearching] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
 
+  // Background Scheduler state
+  const [schedulerStatus, setSchedulerStatus] = useState<{
+    enabled: boolean;
+    active: boolean;
+    intervalMinutes: number;
+    lastRunAt: string | null;
+  } | null>(null);
+
   const loadStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/settings");
@@ -76,10 +84,46 @@ export default function AdminIntegrationPage() {
     }
   }, []);
 
+  const loadSchedulerStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sync/scheduler");
+      if (res.ok) {
+        const data = await res.json();
+        setSchedulerStatus(data);
+      }
+    } catch {
+      // fallback
+    }
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadManagedGroups();
-  }, [loadStatus, loadManagedGroups]);
+    loadSchedulerStatus();
+  }, [loadStatus, loadManagedGroups, loadSchedulerStatus]);
+
+  const handleToggleScheduler = async (action: "start" | "stop") => {
+    try {
+      setSyncing("scheduler");
+      const res = await fetch("/api/sync/scheduler", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSchedulerStatus(data);
+        setFeedback({
+          type: "success",
+          text: action === "start" ? "Periodic background sync scheduler started!" : "Periodic background sync scheduler paused.",
+        });
+      }
+    } catch (err: any) {
+      setFeedback({ type: "error", text: `Scheduler error: ${err.message}` });
+    } finally {
+      setSyncing(null);
+    }
+  };
 
   const handleTestConnection = async () => {
     try {
@@ -360,6 +404,91 @@ export default function AdminIntegrationPage() {
           >
             {syncing === "live-sync" ? "Pushing Live..." : "⚡ Execute Live Availability Sync"}
           </button>
+        </div>
+      </div>
+
+      {/* Live Automation & Scheduling Status Card */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>🤖</span> Automated Synchronization Engine
+            </h2>
+            <p className="text-xs text-slate-500">
+              Immediate event-driven sync on roster change + background periodic checks
+            </p>
+          </div>
+          <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold border border-emerald-300 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+            AUTOMATION ACTIVE
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1: Immediate Auto-Sync */}
+          <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>⚡</span> Immediate Auto-Sync on Save
+              </span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">
+                ACTIVE
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Whenever you create, edit, or delete a shift or leave entry in Roster Management or My Roster, the system automatically evaluates and updates Remedy Assignment Availability in the background immediately.
+            </p>
+            <div className="text-[11px] text-slate-500 pt-1">
+              Triggered on: <code>Shift Save</code>, <code>Leave Request</code>, <code>Shift Delete</code>, <code>Emergency Override</code>
+            </div>
+          </div>
+
+          {/* Card 2: Periodic Scheduler */}
+          <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>⏱️</span> Periodic Background Scheduler
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  schedulerStatus?.active
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {schedulerStatus?.active ? "RUNNING" : "PAUSED"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Continuously runs in the background every{" "}
+              <strong>{schedulerStatus?.intervalMinutes || 5} minutes</strong>. Automatically flips analysts to Available or Unavailable as shift start and end times arrive.
+            </p>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <span>
+                Last run:{" "}
+                {schedulerStatus?.lastRunAt
+                  ? new Date(schedulerStatus.lastRunAt).toLocaleTimeString()
+                  : "Recently started"}
+              </span>
+              {schedulerStatus?.active ? (
+                <button
+                  onClick={() => handleToggleScheduler("stop")}
+                  disabled={syncing !== null}
+                  className="text-xs text-red-600 hover:underline font-semibold"
+                >
+                  Pause
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleToggleScheduler("start")}
+                  disabled={syncing !== null}
+                  className="text-xs text-emerald-600 hover:underline font-semibold"
+                >
+                  Resume
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

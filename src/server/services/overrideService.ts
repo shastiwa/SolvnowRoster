@@ -4,6 +4,7 @@ import { NotFoundError } from "@/lib/errors";
 import { AuditService } from "./auditService";
 import { SessionUser } from "../auth/session";
 import { AuthorizationService } from "../authorization/service";
+import { SyncService } from "./syncService";
 
 export interface CreateOverrideInput {
   personId: string;
@@ -42,6 +43,11 @@ export class OverrideService {
       performedBy: user.loginName,
     });
 
+    SyncService.triggerAutoSync(
+      [{ personId: override.personId, supportGroupId: override.supportGroupId }],
+      user.loginName
+    );
+
     return override;
   }
 
@@ -72,6 +78,11 @@ export class OverrideService {
       newValue: cancelled,
       performedBy: user.loginName,
     });
+
+    SyncService.triggerAutoSync(
+      [{ personId: existing.personId, supportGroupId: existing.supportGroupId }],
+      user.loginName
+    );
 
     return cancelled;
   }

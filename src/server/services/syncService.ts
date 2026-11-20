@@ -33,6 +33,40 @@ export interface SyncTargetResult {
 
 export class SyncService {
   /**
+   * Dispatches asynchronous auto-sync for specified person/supportGroup targets.
+   * Runs in background immediately without blocking UI operations.
+   */
+  public static triggerAutoSync(
+    targets: Array<{ personId: string; supportGroupId: string }>,
+    performedBy: string = "system"
+  ): void {
+    const config = getAppConfig();
+    if (!config.BMC_SYNC_ENABLED) return;
+
+    setImmediate(async () => {
+      const seen = new Set<string>();
+      for (const t of targets) {
+        const key = `${t.personId}:${t.supportGroupId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        try {
+          await SyncService.syncPersonGroup(t.personId, t.supportGroupId, {
+            dryRun: false,
+            performedBy: `${performedBy} (auto-sync)`,
+          });
+        } catch (err: any) {
+          SafeLogger.warn("Auto-sync skipped or failed for target", {
+            personId: t.personId,
+            supportGroupId: t.supportGroupId,
+            error: err.message,
+          });
+        }
+      }
+    });
+  }
+
+  /**
    * Synchronizes availability for a specific (Person, SupportGroup).
    */
   public static async syncPersonGroup(

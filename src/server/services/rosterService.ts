@@ -12,6 +12,7 @@ import { ValidationError, NotFoundError } from "@/lib/errors";
 import { AuditService } from "./auditService";
 import { SessionUser } from "../auth/session";
 import { AuthorizationService } from "../authorization/service";
+import { SyncService } from "./syncService";
 
 export class RosterService {
   /**
@@ -169,6 +170,11 @@ export class RosterService {
       performedBy: user.loginName,
     });
 
+    SyncService.triggerAutoSync(
+      [{ personId: entry.personId, supportGroupId: entry.supportGroupId }],
+      user.loginName
+    );
+
     return entry;
   }
 
@@ -228,6 +234,11 @@ export class RosterService {
       performedBy: user.loginName,
     });
 
+    SyncService.triggerAutoSync(
+      [{ personId: updated.personId, supportGroupId: updated.supportGroupId }],
+      user.loginName
+    );
+
     return updated;
   }
 
@@ -256,6 +267,11 @@ export class RosterService {
       oldValue: existing,
       performedBy: user.loginName,
     });
+
+    SyncService.triggerAutoSync(
+      [{ personId: existing.personId, supportGroupId: existing.supportGroupId }],
+      user.loginName
+    );
 
     return { success: true };
   }
@@ -361,6 +377,12 @@ export class RosterService {
       performedBy: user.loginName,
     });
 
+    const bulkTargets = input.personIds.map((pId) => ({
+      personId: pId,
+      supportGroupId: input.supportGroupId,
+    }));
+    SyncService.triggerAutoSync(bulkTargets, user.loginName);
+
     return { createdCount: created.length, createdIds: created };
   }
 
@@ -448,6 +470,15 @@ export class RosterService {
       performedBy: user.loginName,
     });
 
+    const uniquePersonIds = Array.from(new Set(sourceEntries.map((e) => e.personId)));
+    SyncService.triggerAutoSync(
+      uniquePersonIds.map((pId) => ({
+        personId: pId,
+        supportGroupId: input.supportGroupId,
+      })),
+      user.loginName
+    );
+
     return { copiedCount };
   }
 
@@ -519,6 +550,11 @@ export class RosterService {
       },
       performedBy: user.loginName,
     });
+
+    SyncService.triggerAutoSync(
+      [{ personId: input.personId, supportGroupId: input.supportGroupId }],
+      user.loginName
+    );
 
     return { copiedCount };
   }
