@@ -1,0 +1,271 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ROSTER_USER
+  ROSTER_MANAGER
+  ROSTER_ADMIN
+}
+
+enum RosterStatus {
+  WORKING
+  OFF
+  LEAVE
+  ON_CALL
+}
+
+enum OverrideState {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum EffectiveSource {
+  ROSTER
+  OVERRIDE
+  MISSING_ROSTER_POLICY
+}
+
+enum SyncType {
+  AVAILABILITY
+  DIRECTORY
+  DRY_RUN
+  RECONCILIATION
+}
+
+enum SyncResult {
+  SUCCESS
+  FAILURE
+  SKIPPED
+  DRY_RUN
+  CONFIGURATION_REQUIRED
+}
+
+model User {
+  id             String                @id @default(cuid())
+  externalUserId String?               @unique
+  loginName      String                @unique
+  displayName    String
+  email          String                @unique
+  role           Role                  @default(ROSTER_USER)
+  active         Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  managedGroups  ManagerSupportGroup[]
+
+  @@index([role])
+}
+
+model SupportGroup {
+  id                 String                @id @default(cuid())
+  bmcSupportGroupId  String                @unique
+  name               String
+  company            String
+  organization       String
+  active             Boolean               @default(true)
+  lastSyncedAt       DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  members            PersonSupportGroup[]
+  managers           ManagerSupportGroup[]
+  rosterEntries      RosterEntry[]
+  overrides          AvailabilityOverride[]
+  availabilityStates AvailabilityState[]
+  syncHistories      SyncHistory[]
+
+  @@index([company, organization, name])
+}
+
+model Person {
+  id                 String                @id @default(cuid())
+  bmcPersonId        String                @unique
+  loginId            String                @unique
+  fullName           String
+  email              String
+  active             Boolean               @default(true)
+  lastSyncedAt       DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  supportGroups      PersonSupportGroup[]
+  rosterEntries      RosterEntry[]
+  overrides          AvailabilityOverride[]
+  availabilityStates AvailabilityState[]
+  syncHistories      SyncHistory[]
+
+  @@index([fullName])
+  @@index([loginId])
+}
+
+model PersonSupportGroup {
+  id                     String       @id @default(cuid())
+  personId               String
+  supportGroupId         String
+  currentBmcAvailability Boolean      @default(false)
+  defaultGroup           Boolean      @default(false)
+  active                 Boolean      @default(true)
+  lastSyncedAt           DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  supportGroup SupportGroup @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([personId, supportGroupId])
+  @@index([supportGroupId])
+  @@index([personId])
+}
+
+model ManagerSupportGroup {
+  id             String   @id @default(cuid())
+  managerUserId  String
+  supportGroupId String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  managerUser  User         @relation(fields: [managerUserId], references: [id], onDelete: Restrict)
+  supportGroup SupportGroup @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([managerUserId, supportGroupId])
+  @@index([managerUserId])
+  @@index([supportGroupId])
+}
+
+model RosterEntry {
+  id             String       @id @default(cuid())
+  personId       String
+  supportGroupId String
+  rosterDate     String       // Format: YYYY-MM-DD
+  startTime      String       // Format: HH:mm
+  endTime        String       // Format: HH:mm
+  timeZone       String       // e.g. Asia/Kolkata
+  rosterStatus   RosterStatus @default(WORKING)
+  notes          String?
+  createdBy      String
+  updatedBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  supportGroup SupportGroup @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
+
+  @@index([personId, supportGroupId, rosterDate])
+  @@index([supportGroupId, rosterDate])
+}
+
+model AvailabilityOverride {
+  id             String        @id @default(cuid())
+  personId       String
+  supportGroupId String
+  overrideState  OverrideState
+  startAt        DateTime
+  expiresAt      DateTime?
+  reason         String
+  createdBy      String
+  cancelledBy    String?
+  cancelledAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  supportGroup SupportGroup @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
+
+  @@index([personId, supportGroupId, startAt])
+}
+
+model AvailabilityState {
+  id                       String          @id @default(cuid())
+  personId                 String
+  supportGroupId           String
+  desiredAvailability      Boolean
+  lastKnownBmcAvailability Boolean?
+  effectiveSource          EffectiveSource
+  calculationReason        String
+  calculatedAt             DateTime        @default(now())
+  lastSyncAttemptAt        DateTime?
+  lastSuccessfulSyncAt     DateTime?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  supportGroup SupportGroup @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([personId, supportGroupId])
+  @@index([supportGroupId])
+}
+
+model SyncHistory {
+  id                   String          @id @default(cuid())
+  personId             String?
+  supportGroupId       String?
+  syncType             SyncType
+  previousAvailability Boolean?
+  desiredAvailability  Boolean?
+  effectiveSource      EffectiveSource?
+  operation            String
+  result               SyncResult
+  httpStatus           Int?
+  errorCode            String?
+  errorMessage         String?
+  retryCount           Int             @default(0)
+  correlationId        String
+  startedAt            DateTime        @default(now())
+  completedAt          DateTime?
+
+  person       Person?       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  supportGroup SupportGroup? @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
+
+  @@index([correlationId])
+  @@index([result])
+  @@index([startedAt])
+  @@index([supportGroupId])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  action        String
+  oldValue      String?
+  newValue      String?
+  performedBy   String
+  correlationId String
+  timestamp     DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@index([performedBy])
+}
+
+model ApplicationConfiguration {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  sensitive   Boolean  @default(false)
+  updatedBy   String
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+model JobExecution {
+  id             String    @id @default(cuid())
+  jobType        String
+  status         String
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  processedCount Int       @default(0)
+  succeededCount Int       @default(0)
+  failedCount    Int       @default(0)
+  skippedCount   Int       @default(0)
+  errorMessage   String?
+  correlationId  String
+
+  @@index([jobType, startedAt])
+}
