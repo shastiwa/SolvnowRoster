@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { SyncService } from "@/server/services/syncService";
 import { prisma } from "@/lib/database";
 
@@ -90,5 +90,15 @@ describe("SyncService Integration Tests", () => {
     });
 
     expect(result.operationAttempted).toBe("NO_CHANGE");
+  });
+
+  afterAll(async () => {
+    if (testGroupId && testPersonId) {
+      await prisma.syncHistory.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.availabilityState.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.personSupportGroup.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.supportGroup.deleteMany({ where: { id: testGroupId } });
+      await prisma.person.deleteMany({ where: { id: testPersonId } });
+    }
   });
 });

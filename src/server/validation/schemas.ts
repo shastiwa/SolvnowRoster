@@ -97,12 +97,30 @@ export const CopyPersonShiftSchema = z.object({
 export const CreateOverrideSchema = z
   .object({
     personId: z.string().min(1, "Person required"),
-    supportGroupId: z.string().min(1, "Support group required"),
+    supportGroupId: z.string().optional(),
+    supportGroupIds: z.array(z.string()).optional(),
+    applyToAllGroups: z.boolean().optional(),
     overrideState: z.nativeEnum(OverrideState),
     startAt: z.string().datetime(),
     expiresAt: z.string().datetime().optional().nullable(),
     reason: z.string().min(3, "Reason must be at least 3 characters").max(500),
   })
+  .refine(
+    (data) => {
+      if (
+        !data.applyToAllGroups &&
+        (!data.supportGroupIds || data.supportGroupIds.length === 0) &&
+        !data.supportGroupId
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Either supportGroupId, supportGroupIds, or applyToAllGroups must be specified",
+      path: ["supportGroupId"],
+    }
+  )
   .refine(
     (data) => {
       if (data.expiresAt) {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { RosterService } from "@/server/services/rosterService";
 import { prisma } from "@/lib/database";
 import { Role, RosterStatus } from "@prisma/client";
@@ -240,5 +240,16 @@ describe("RosterService Overlap & Conflict Tests", () => {
         unauthorizedManager
       )
     ).rejects.toThrow(AuthorizationError);
+  });
+
+  afterAll(async () => {
+    if (testGroupId && testPersonId) {
+      await prisma.syncHistory.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.availabilityState.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.rosterEntry.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.personSupportGroup.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.supportGroup.deleteMany({ where: { id: testGroupId } });
+      await prisma.person.deleteMany({ where: { id: testPersonId } });
+    }
   });
 });

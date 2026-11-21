@@ -162,6 +162,7 @@ model AvailabilityOverride {
   id             String        @id @default(cuid())
   personId       String
   supportGroupId String
+  batchId        String?
   overrideState  OverrideState
   startAt        DateTime
   expiresAt      DateTime?
@@ -176,6 +177,7 @@ model AvailabilityOverride {
   supportGroup SupportGroup @relation(fields: [supportGroupId], references: [id], onDelete: Restrict)
 
   @@index([personId, supportGroupId, startAt])
+  @@index([personId, batchId])
 }
 
 model AvailabilityState {

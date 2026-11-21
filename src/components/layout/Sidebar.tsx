@@ -14,10 +14,11 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: "📊" },
-  { name: "Roster Management", href: "/roster", icon: "📅", managerOrAdmin: true },
+  { name: "Support Group Rosters", href: "/roster", icon: "🏢", managerOrAdmin: true },
+  { name: "User Roster Management", href: "/user-roster", icon: "👥", managerOrAdmin: true },
   { name: "My Roster", href: "/my-roster", icon: "👤" },
-  { name: "People Directory", href: "/people", icon: "👥" },
-  { name: "Support Groups", href: "/support-groups", icon: "🏢" },
+  { name: "People Directory", href: "/people", icon: "📖" },
+  { name: "Support Groups", href: "/support-groups", icon: "🏛️" },
   { name: "Sync History", href: "/sync-history", icon: "🔄" },
   { name: "Audit Log", href: "/audit", icon: "📋", managerOrAdmin: true },
 ];

@@ -63,27 +63,6 @@ export default function DashboardPage() {
     loadDashboard();
   }, []);
 
-  const handleDryRun = async () => {
-    try {
-      setActionLoading("dry-run");
-      setActionMessage(null);
-      const res = await fetch("/api/sync/dry-run", { method: "POST" });
-      const result = await res.json();
-      if (res.ok) {
-        setActionMessage(
-          `Dry-run finished: Evaluated ${result.evaluatedCount || 0} targets. Desired changes: ${result.updatesRequiredCount || 0}.`
-        );
-        loadDashboard();
-      } else {
-        setActionMessage(`Dry-run failed: ${result.error}`);
-      }
-    } catch (err: any) {
-      setActionMessage(`Error: ${err.message}`);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const handleDirectorySync = async () => {
     try {
       setActionLoading("directory");
@@ -157,18 +136,6 @@ export default function DashboardPage() {
                 <span>Sync Directory</span>
               </button>
 
-              <button
-                onClick={handleDryRun}
-                disabled={actionLoading !== null}
-                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-2"
-              >
-                {actionLoading === "dry-run" ? (
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                ) : (
-                  <span>⚡</span>
-                )}
-                <span>Execute Dry-Run</span>
-              </button>
             </>
           )}
 
