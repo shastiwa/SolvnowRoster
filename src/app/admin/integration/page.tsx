@@ -241,27 +241,6 @@ export default function AdminIntegrationPage() {
     }
   };
 
-  const handleDryRun = async () => {
-    try {
-      setSyncing("dry-run");
-      setFeedback(null);
-      const res = await fetch("/api/sync/dry-run", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        setFeedback({
-          type: "info",
-          text: `Dry-Run completed: Evaluated ${data.evaluatedCount || 0} targets. Desired updates required: ${data.updatesRequiredCount || 0}. (No live BMC mutations performed).`,
-        });
-      } else {
-        setFeedback({ type: "error", text: `Dry-run failed: ${data.error}` });
-      }
-    } catch (err: any) {
-      setFeedback({ type: "error", text: `Error: ${err.message}` });
-    } finally {
-      setSyncing(null);
-    }
-  };
-
   const handleLiveAvailabilitySync = async () => {
     if (
       !confirm(
@@ -387,14 +366,6 @@ export default function AdminIntegrationPage() {
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
           >
             {syncing === "directory" ? "Syncing..." : "🔄 Sync Managed Groups Only"}
-          </button>
-
-          <button
-            onClick={handleDryRun}
-            disabled={syncing !== null}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
-          >
-            {syncing === "dry-run" ? "Simulating..." : "🔍 Trigger Availability Dry-Run"}
           </button>
 
           <button
