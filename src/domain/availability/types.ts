@@ -27,6 +27,8 @@ export interface OverrideCandidate {
   expiresAt: Date | null;
   reason: string;
   cancelledAt: Date | null;
+  previousAvailability?: boolean | null;
+  restoredAt?: Date | null;
 }
 
 export interface AvailabilityCalculationInput {
@@ -35,6 +37,7 @@ export interface AvailabilityCalculationInput {
   evalTimestamp: Date;
   rosterEntries: RosterEntryCandidate[];
   activeOverrides: OverrideCandidate[];
+  unrestoredOverride?: OverrideCandidate | null;
   currentBmcAvailability?: boolean | null;
   config: AvailabilityEngineConfig;
 }

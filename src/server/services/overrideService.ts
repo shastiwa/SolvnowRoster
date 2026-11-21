@@ -46,6 +46,18 @@ export class OverrideService {
         ? `batch-ov-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
         : undefined;
 
+    const memberships = await prisma.personSupportGroup.findMany({
+      where: {
+        personId: input.personId,
+        supportGroupId: { in: targetGroupIds },
+      },
+      select: { supportGroupId: true, currentBmcAvailability: true },
+    });
+    const availabilityMap = new Map<string, boolean | null>();
+    for (const m of memberships) {
+      availabilityMap.set(m.supportGroupId, m.currentBmcAvailability);
+    }
+
     const created = await prisma.$transaction(
       targetGroupIds.map((gid) =>
         prisma.availabilityOverride.create({
@@ -57,6 +69,7 @@ export class OverrideService {
             startAt: new Date(input.startAt),
             expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
             reason: input.reason,
+            previousAvailability: availabilityMap.get(gid) ?? true,
             createdBy: user.loginName,
           },
           include: {
@@ -77,9 +90,16 @@ export class OverrideService {
       });
     }
 
-    SyncService.triggerAutoSync(
-      created.map((o) => ({ personId: o.personId, supportGroupId: o.supportGroupId })),
-      user.loginName
+    // Await sync for immediate live update in Remedy and local DB (deduplicated by target)
+    const uniqueTargets = Array.from(
+      new Map(created.map((o) => [`${o.personId}:${o.supportGroupId}`, o])).values()
+    );
+    await Promise.allSettled(
+      uniqueTargets.map((o) =>
+        SyncService.syncPersonGroup(o.personId, o.supportGroupId, {
+          performedBy: user.loginName,
+        })
+      )
     );
 
     return targetGroupIds.length === 1 ? created[0] : created;
@@ -113,10 +133,10 @@ export class OverrideService {
       performedBy: user.loginName,
     });
 
-    SyncService.triggerAutoSync(
-      [{ personId: existing.personId, supportGroupId: existing.supportGroupId }],
-      user.loginName
-    );
+    // Await sync to immediately restore normal shift availability in Remedy and local DB
+    await SyncService.syncPersonGroup(existing.personId, existing.supportGroupId, {
+      performedBy: user.loginName,
+    }).catch(() => {});
 
     return cancelled;
   }
@@ -157,9 +177,16 @@ export class OverrideService {
       });
     }
 
-    SyncService.triggerAutoSync(
-      active.map((a) => ({ personId: a.personId, supportGroupId: a.supportGroupId })),
-      user.loginName
+    // Await sync for each cancelled target to immediately restore Remedy availability (deduplicated)
+    const uniqueTargets = Array.from(
+      new Map(active.map((a) => [`${a.personId}:${a.supportGroupId}`, a])).values()
+    );
+    await Promise.allSettled(
+      uniqueTargets.map((a) =>
+        SyncService.syncPersonGroup(a.personId, a.supportGroupId, {
+          performedBy: user.loginName,
+        })
+      )
     );
 
     return { count: active.length };

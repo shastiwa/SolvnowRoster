@@ -215,7 +215,37 @@ export class AvailabilityEngine {
       };
     }
 
-    // 4. Missing roster entry policy
+    // 4. Check for unrestored ended override
+    // When an override ends (via cancellation or expiration) and the person has no active roster,
+    // their availability must be restored: returning from an out-of-shift override restores to Available (true).
+    if (input.unrestoredOverride) {
+      const restoredAvailability =
+        input.unrestoredOverride.overrideState === OverrideState.UNAVAILABLE
+          ? true
+          : (input.unrestoredOverride.previousAvailability ?? false);
+
+      const actionPolicy =
+        currentBmcAvailability === null || currentBmcAvailability === undefined
+          ? "UPDATE_REQUIRED"
+          : currentBmcAvailability !== restoredAvailability
+          ? "UPDATE_REQUIRED"
+          : "NO_CHANGE";
+
+      return {
+        personId,
+        supportGroupId,
+        desiredAvailability: restoredAvailability,
+        effectiveSource: EffectiveSource.MISSING_ROSTER_POLICY,
+        effectiveStart: null,
+        effectiveEnd: null,
+        reason: `Override ended; restored to pre-override schedule (${
+          restoredAvailability ? "Available" : "Unavailable"
+        })`,
+        actionPolicy,
+      };
+    }
+
+    // 5. Missing roster entry policy
     if (config.missingRosterPolicy === "TAKE_NO_ACTION") {
       return {
         personId,

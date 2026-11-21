@@ -167,6 +167,8 @@ model AvailabilityOverride {
   startAt        DateTime
   expiresAt      DateTime?
   reason         String
+  previousAvailability Boolean?
+  restoredAt     DateTime?
   createdBy      String
   cancelledBy    String?
   cancelledAt    DateTime?

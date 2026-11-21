@@ -438,4 +438,51 @@ describe("AvailabilityEngine", () => {
     expect(result.desiredAvailability).toBe(true);
     expect(result.reason).toContain("Newer override");
   });
+
+  it("21. Restores to normal schedule (AVAILABLE) when out-of-shift override ends and person has no roster", () => {
+    const checkTime = new Date("2026-03-10T06:30:00.000Z");
+    const cancelledOverride: OverrideCandidate = {
+      id: "ov-cancelled",
+      overrideState: OverrideState.UNAVAILABLE,
+      startAt: new Date("2026-03-10T04:00:00.000Z"),
+      expiresAt: new Date("2026-03-10T08:00:00.000Z"),
+      reason: "Out of shift",
+      cancelledAt: new Date("2026-03-10T06:00:00.000Z"),
+      previousAvailability: true,
+      restoredAt: null,
+    };
+
+    const result = AvailabilityEngine.calculate({
+      personId: "p-1",
+      supportGroupId: "sg-1",
+      evalTimestamp: checkTime,
+      rosterEntries: [],
+      activeOverrides: [], // No active overrides
+      unrestoredOverride: cancelledOverride,
+      currentBmcAvailability: false, // Currently still false from the override
+      config: defaultConfig, // TAKE_NO_ACTION
+    });
+
+    expect(result.desiredAvailability).toBe(true);
+    expect(result.actionPolicy).toBe("UPDATE_REQUIRED");
+    expect(result.reason).toContain("Override ended; restored to pre-override schedule (Available)");
+  });
+
+  it("22. Missing roster policy TAKE_NO_ACTION does not update when no ended override is pending restoration", () => {
+    const checkTime = new Date("2026-03-10T06:30:00.000Z");
+
+    const result = AvailabilityEngine.calculate({
+      personId: "p-1",
+      supportGroupId: "sg-1",
+      evalTimestamp: checkTime,
+      rosterEntries: [],
+      activeOverrides: [],
+      unrestoredOverride: null,
+      currentBmcAvailability: false,
+      config: defaultConfig,
+    });
+
+    expect(result.desiredAvailability).toBe(false);
+    expect(result.actionPolicy).toBe("SKIPPED");
+  });
 });

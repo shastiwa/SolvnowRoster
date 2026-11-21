@@ -51,6 +51,8 @@ describe("OverrideService Multi-Group Tests", () => {
     });
     testPersonId = person.id;
 
+    await prisma.availabilityOverride.deleteMany({ where: { personId: person.id } });
+
     await prisma.personSupportGroup.upsert({
       where: {
         personId_supportGroupId: {
@@ -171,9 +173,23 @@ describe("OverrideService Multi-Group Tests", () => {
     );
 
     const cancelResult = await OverrideService.cancelPersonActiveOverrides(testPersonId, adminUser);
-    expect(cancelResult.count).toBeGreaterThanOrEqual(2);
+    expect(cancelResult.count).toBe(2);
 
     const remainingActive = await OverrideService.getActiveOverridesForPerson(testPersonId);
     expect(remainingActive.length).toBe(0);
+
+    // Verify all overrides for this person are cancelled
+    const cancelledOverrides = await prisma.availabilityOverride.findMany({
+      where: { personId: testPersonId },
+    });
+    expect(cancelledOverrides.length).toBe(2);
+    expect(cancelledOverrides.every((o) => o.cancelledAt !== null)).toBe(true);
+
+    // Verify that AvailabilityService evaluates to restored schedule (AVAILABLE = true)
+    const { AvailabilityService } = await import("@/server/services/availabilityService");
+    const evalResult = await AvailabilityService.evaluate(testPersonId, testGroup1Id);
+    expect(evalResult.desiredAvailability).toBe(true);
+    expect(evalResult.actionPolicy).toBe("UPDATE_REQUIRED");
+    expect(evalResult.reason).toContain("Override ended; restored to pre-override schedule (Available)");
   });
 });

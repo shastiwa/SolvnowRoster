@@ -39,6 +39,20 @@ export class AvailabilityService {
       },
     });
 
+    // Check for any ended override that has not yet been marked as restored
+    const unrestoredOverride = await prisma.availabilityOverride.findFirst({
+      where: {
+        personId,
+        supportGroupId,
+        restoredAt: null,
+        OR: [
+          { cancelledAt: { not: null } },
+          { expiresAt: { lte: evalTimestamp } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
     // 3. Fetch candidate roster entries (yesterday, today, tomorrow to cover overnight shifts)
     const todayStr = formatDateInTimeZone(evalTimestamp, config.DEFAULT_TIME_ZONE);
     const evalMs = evalTimestamp.getTime();
@@ -67,6 +81,7 @@ export class AvailabilityService {
       evalTimestamp,
       rosterEntries,
       activeOverrides: overrides,
+      unrestoredOverride,
       currentBmcAvailability,
       config: {
         missingRosterPolicy: config.MISSING_ROSTER_POLICY as MissingRosterPolicy,

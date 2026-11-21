@@ -160,6 +160,23 @@ export class SyncService {
 
       // Case B: No update required (already matching)
       if (!needsUpdate) {
+        if (!isDryRun) {
+          await prisma.availabilityOverride.updateMany({
+            where: {
+              personId,
+              supportGroupId,
+              restoredAt: null,
+              OR: [
+                { cancelledAt: { not: null } },
+                { expiresAt: { lte: new Date() } },
+              ],
+            },
+            data: {
+              restoredAt: new Date(),
+            },
+          });
+        }
+
         const record = await prisma.syncHistory.create({
           data: {
             personId,
@@ -322,6 +339,22 @@ export class SyncService {
         data: {
           currentBmcAvailability: desired,
           lastSyncedAt: new Date(),
+        },
+      });
+
+      // If there were any unrestored ended overrides for this target, mark them restored
+      await prisma.availabilityOverride.updateMany({
+        where: {
+          personId,
+          supportGroupId,
+          restoredAt: null,
+          OR: [
+            { cancelledAt: { not: null } },
+            { expiresAt: { lte: new Date() } },
+          ],
+        },
+        data: {
+          restoredAt: new Date(),
         },
       });
 

@@ -245,6 +245,7 @@ describe("RosterService Overlap & Conflict Tests", () => {
   afterAll(async () => {
     if (testGroupId && testPersonId) {
       await prisma.syncHistory.deleteMany({ where: { supportGroupId: testGroupId } });
+      await prisma.availabilityOverride.deleteMany({ where: { supportGroupId: testGroupId } });
       await prisma.availabilityState.deleteMany({ where: { supportGroupId: testGroupId } });
       await prisma.rosterEntry.deleteMany({ where: { supportGroupId: testGroupId } });
       await prisma.personSupportGroup.deleteMany({ where: { supportGroupId: testGroupId } });
