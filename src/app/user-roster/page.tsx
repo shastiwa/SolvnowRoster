@@ -3,6 +3,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
+interface GroupSummary {
+  id: string;
+  name: string;
+  company: string;
+  organization: string;
+  bmcSupportGroupId: string;
+  memberCount: number;
+}
+
 interface PersonSummary {
   id: string;
   fullName: string;
@@ -67,12 +76,15 @@ interface SelectedPersonData {
 }
 
 export default function UserRosterManagementPage() {
+  const [groups, setGroups] = useState<GroupSummary[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [people, setPeople] = useState<PersonSummary[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string>("");
   const [personData, setPersonData] = useState<SelectedPersonData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingPerson, setLoadingPerson] = useState(false);
-  const [search, setSearch] = useState("");
+  const [personSearch, setPersonSearch] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
 
   // Week navigation (Monday-Sunday)
@@ -98,20 +110,46 @@ export default function UserRosterManagementPage() {
   // Restore state
   const [restoring, setRestoring] = useState(false);
 
-  // Load people list
+  // 1. Initial load: Load groups list
   useEffect(() => {
     fetch("/api/user-roster")
       .then((res) => res.json())
       .then((data) => {
-        const list: PersonSummary[] = data.people || [];
-        setPeople(list);
-        if (list.length > 0 && !selectedPersonId) {
-          setSelectedPersonId(list[0].id);
+        const groupList: GroupSummary[] = data.groups || [];
+        setGroups(groupList);
+        if (groupList.length > 0) {
+          setSelectedGroupId(groupList[0].id);
         }
       })
-      .catch((err) => console.error("Failed to load people list:", err))
+      .catch((err) => console.error("Failed to load support groups:", err))
       .finally(() => setLoading(false));
   }, []);
+
+  // 2. When selectedGroupId changes, fetch people belonging to that group only
+  useEffect(() => {
+    if (!selectedGroupId) {
+      setPeople([]);
+      setSelectedPersonId("");
+      setPersonData(null);
+      return;
+    }
+
+    setLoadingPeople(true);
+    fetch(`/api/user-roster?groupId=${selectedGroupId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list: PersonSummary[] = data.people || [];
+        setPeople(list);
+        if (list.length > 0) {
+          setSelectedPersonId(list[0].id);
+        } else {
+          setSelectedPersonId("");
+          setPersonData(null);
+        }
+      })
+      .catch((err) => console.error("Failed to load group personnel:", err))
+      .finally(() => setLoadingPeople(false));
+  }, [selectedGroupId]);
 
   // Calculate week dates
   const weekDates = React.useMemo(() => {
@@ -156,9 +194,9 @@ export default function UserRosterManagementPage() {
   // Filter people list for search
   const filteredPeople = people.filter(
     (p) =>
-      p.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      p.loginId.toLowerCase().includes(search.toLowerCase()) ||
-      p.email.toLowerCase().includes(search.toLowerCase())
+      p.fullName.toLowerCase().includes(personSearch.toLowerCase()) ||
+      p.loginId.toLowerCase().includes(personSearch.toLowerCase()) ||
+      p.email.toLowerCase().includes(personSearch.toLowerCase())
   );
 
   // Open Out-of-shift dialog
@@ -178,7 +216,8 @@ export default function UserRosterManagementPage() {
     );
   };
 
-  const handleSelectAllGroups = () => {
+  // Toggle all groups in modal
+  const handleToggleAllGroups = () => {
     if (!personData) return;
     if (selectedGroupIds.length === personData.supportGroups.length) {
       setSelectedGroupIds([]);
@@ -339,58 +378,132 @@ export default function UserRosterManagementPage() {
         </div>
       )}
 
-      {/* User Selector & Search Bar */}
+      {/* Group-Scoped Search & User Selector */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex-1 max-w-md">
-            <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wider">
-              Select or Search Support Personnel
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Step 1: Select Support Group */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 inline-flex items-center justify-center text-[10px] font-black">
+                  1
+                </span>
+                Search by Support Group Name
+              </span>
+              <span className="text-[11px] font-normal text-slate-400 lowercase">{groups.length} groups</span>
             </label>
             <div className="relative">
               <select
-                value={selectedPersonId}
-                onChange={(e) => setSelectedPersonId(e.target.value)}
+                value={selectedGroupId}
+                onChange={(e) => {
+                  setSelectedGroupId(e.target.value);
+                  setPersonSearch("");
+                }}
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-2xs"
               >
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.fullName} ({p.loginId}) — {p.supportGroups.length} Support Group{p.supportGroups.length === 1 ? "" : "s"}
+                <option value="">-- Choose Support Group --</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.memberCount} member{g.memberCount === 1 ? "" : "s"})
                   </option>
                 ))}
               </select>
             </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Select a support group first to view only its assigned engineers
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleOpenOutOfShiftModal}
-              disabled={!personData || personData.supportGroups.length === 0}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-2"
-            >
-              <span>⚡</span>
-              <span>Mark Out-of-Shift / Offline (All Groups)</span>
-            </button>
+          {/* Step 2: Support Personnel in Group */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 inline-flex items-center justify-center text-[10px] font-black">
+                  2
+                </span>
+                Support Personnel
+              </span>
+              {selectedGroupId && (
+                <span className="text-[11px] font-semibold text-blue-600">
+                  {people.length} member{people.length === 1 ? "" : "s"} in group
+                </span>
+              )}
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={selectedPersonId}
+                onChange={(e) => setSelectedPersonId(e.target.value)}
+                disabled={!selectedGroupId || loadingPeople || people.length === 0}
+                className="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-2xs disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                {!selectedGroupId ? (
+                  <option value="">-- Select a support group first --</option>
+                ) : loadingPeople ? (
+                  <option value="">Loading group members...</option>
+                ) : people.length === 0 ? (
+                  <option value="">No members found in this group</option>
+                ) : (
+                  filteredPeople.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.fullName} ({p.loginId})
+                    </option>
+                  ))
+                )}
+              </select>
+
+              {people.length > 3 && (
+                <input
+                  type="text"
+                  placeholder="Filter name/id..."
+                  value={personSearch}
+                  onChange={(e) => setPersonSearch(e.target.value)}
+                  className="w-36 px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                />
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Select an engineer to manage their multi-group schedule & out-of-shift status
+            </p>
           </div>
         </div>
 
         {personData && (
-          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
             <div>
-              <span className="font-semibold text-slate-900">{personData.fullName}</span> &bull;{" "}
-              <span className="font-mono text-slate-500">{personData.loginId}</span> &bull;{" "}
+              <span className="font-bold text-slate-900 text-sm">{personData.fullName}</span> &bull;{" "}
+              <span className="font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">{personData.loginId}</span> &bull;{" "}
               <span className="text-slate-500">{personData.email}</span>
             </div>
-            <div className="flex items-center gap-1.5 text-blue-700 font-medium">
-              <span>Member of</span>
-              <span className="font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-[11px]">
-                {personData.supportGroups.length} Support Group{personData.supportGroups.length === 1 ? "" : "s"}
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-blue-700 font-medium">
+                <span>Total Memberships:</span>
+                <span className="font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-[11px]">
+                  {personData.supportGroups.length} Support Group{personData.supportGroups.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <button
+                onClick={handleOpenOutOfShiftModal}
+                disabled={!personData || personData.supportGroups.length === 0}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <span>⚡</span>
+                <span>Mark Out-of-Shift / Offline (All Groups)</span>
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      {loadingPerson ? (
+      {!selectedGroupId ? (
+        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
+          <div className="text-4xl">🏢</div>
+          <h3 className="text-base font-bold text-slate-800">Select a Support Group to Begin</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Choose a support group above to view its engineers. Once you pick an engineer, you can manage their
+            availability across all support groups they belong to.
+          </p>
+        </div>
+      ) : loadingPerson ? (
         <div className="flex items-center justify-center min-h-[200px] text-xs text-slate-400">
           Loading user availability & group memberships...
         </div>
@@ -519,15 +632,15 @@ export default function UserRosterManagementPage() {
                     prev.setDate(prev.getDate() - 7);
                     setSelectedMonday(prev.toISOString().split("T")[0]);
                   }}
-                  className="px-2.5 py-1 bg-white hover:bg-slate-50 rounded shadow-2xs text-slate-700"
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 rounded shadow-2xs border border-slate-200 text-slate-700"
                 >
                   &larr; Prev Week
                 </button>
                 <button
                   onClick={() => setSelectedMonday(getMonday(new Date()))}
-                  className="px-2.5 py-1 hover:bg-white rounded text-slate-600"
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 rounded shadow-2xs border border-slate-200 text-slate-700"
                 >
-                  Current
+                  This Week
                 </button>
                 <button
                   onClick={() => {
@@ -535,7 +648,7 @@ export default function UserRosterManagementPage() {
                     next.setDate(next.getDate() + 7);
                     setSelectedMonday(next.toISOString().split("T")[0]);
                   }}
-                  className="px-2.5 py-1 bg-white hover:bg-slate-50 rounded shadow-2xs text-slate-700"
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 rounded shadow-2xs border border-slate-200 text-slate-700"
                 >
                   Next Week &rarr;
                 </button>
@@ -543,50 +656,55 @@ export default function UserRosterManagementPage() {
             </div>
 
             {/* 7-Day Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
               {weekDates.map((dateStr) => {
+                const dayDate = new Date(dateStr);
+                const dayName = dayDate.toLocaleDateString("en-US", { weekday: "short" });
                 const dayShifts = personData.shifts.filter((s) => s.rosterDate === dateStr);
-                const dayName = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
-                const isToday = dateStr === new Date().toISOString().split("T")[0];
+                const isToday = new Date().toISOString().split("T")[0] === dateStr;
 
                 return (
                   <div
                     key={dateStr}
-                    className={`p-3 rounded-xl border flex flex-col justify-between min-h-[120px] ${
-                      isToday ? "bg-blue-50/50 border-blue-300" : "bg-slate-50/50 border-slate-200"
+                    className={`rounded-lg border p-2.5 space-y-2 flex flex-col justify-between min-h-[140px] ${
+                      isToday ? "border-blue-400 bg-blue-50/20" : "border-slate-200 bg-slate-50/50"
                     }`}
                   >
-                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60 text-xs">
-                      <span className="font-bold text-slate-800">{dayName}</span>
-                      <span className="text-[11px] text-slate-500">{dateStr.substring(5)}</span>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-200 text-xs">
+                      <span className={`font-bold ${isToday ? "text-blue-700" : "text-slate-800"}`}>
+                        {dayName}
+                      </span>
+                      <span className="text-slate-400 text-[11px] font-mono">{dateStr.slice(5)}</span>
                     </div>
 
-                    <div className="py-2 space-y-1.5 flex-1">
-                      {dayShifts.length > 0 ? (
-                        dayShifts.map((s) => (
+                    <div className="space-y-1.5 flex-1">
+                      {dayShifts.length === 0 ? (
+                        <div className="text-[11px] text-slate-400 italic pt-2 text-center">No shifts</div>
+                      ) : (
+                        dayShifts.map((shift) => (
                           <div
-                            key={s.id}
-                            className="p-1.5 rounded bg-white border border-slate-200 text-[11px] shadow-2xs space-y-0.5"
+                            key={shift.id}
+                            className={`p-1.5 rounded border text-[11px] space-y-0.5 ${
+                              shift.rosterStatus === "WORKING"
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-950"
+                                : shift.rosterStatus === "LEAVE"
+                                ? "bg-rose-50 border-rose-200 text-rose-950"
+                                : shift.rosterStatus === "ON_CALL"
+                                ? "bg-amber-50 border-amber-200 text-amber-950"
+                                : "bg-slate-100 border-slate-200 text-slate-700"
+                            }`}
                           >
-                            <div className="font-semibold text-slate-800 truncate">{s.supportGroup.name}</div>
-                            <div className="text-slate-600 font-mono text-[10px]">
-                              {s.startTime} - {s.endTime}
+                            <div className="font-bold flex items-center justify-between text-[10px]">
+                              <span>{shift.rosterStatus}</span>
+                              <span className="font-mono">
+                                {shift.startTime}-{shift.endTime}
+                              </span>
                             </div>
-                            <span
-                              className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                                s.rosterStatus === "WORKING"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : s.rosterStatus === "LEAVE"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-slate-100 text-slate-700"
-                              }`}
-                            >
-                              {s.rosterStatus}
-                            </span>
+                            <div className="text-[10px] text-slate-600 truncate" title={shift.supportGroup.name}>
+                              {shift.supportGroup.name}
+                            </div>
                           </div>
                         ))
-                      ) : (
-                        <div className="text-[11px] text-slate-400 italic text-center py-4">No shift</div>
                       )}
                     </div>
                   </div>
@@ -595,169 +713,196 @@ export default function UserRosterManagementPage() {
             </div>
           </div>
         </>
-      ) : null}
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-xs text-slate-400">
+          No personnel selected or no members found in this support group.
+        </div>
+      )}
 
-      {/* Out of Shift / Availability Dialog Modal */}
+      {/* Out of Shift / Multi-Group Override Modal Dialog */}
       {modalOpen && personData && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <span>⚡</span> Out-of-Shift / Multi-Group Availability
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Update Remedy Assignment Availability for <strong>{personData.fullName}</strong>
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-2xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <form onSubmit={handleSubmitOverride} className="p-6 space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">⚡</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Mark Out-of-Shift / Offline</h3>
+                    <p className="text-xs text-slate-500">
+                      Update Remedy Assignment Availability across support groups
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
-              >
-                ✕
-              </button>
-            </div>
 
-            <form onSubmit={handleSubmitOverride} className="p-5 space-y-4 text-xs">
-              {/* Group Checkboxes */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-bold text-slate-700">
-                    Select Target Support Groups ({selectedGroupIds.length} of {personData.supportGroups.length} selected):
+              {/* Person Summary */}
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs flex items-center justify-between">
+                <div>
+                  <span className="text-slate-500">Support Person: </span>
+                  <strong className="text-slate-900">{personData.fullName}</strong>{" "}
+                  <span className="font-mono text-slate-500">({personData.loginId})</span>
+                </div>
+                <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  {personData.supportGroups.length} Groups
+                </span>
+              </div>
+
+              {/* Target Availability State */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Target Remedy Availability
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOverrideState("UNAVAILABLE")}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border flex items-center justify-center gap-2 transition-all ${
+                      overrideState === "UNAVAILABLE"
+                        ? "bg-rose-50 border-rose-300 text-rose-800 shadow-2xs ring-2 ring-rose-500/20"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span>🔴</span>
+                    <span>Unavailable (No)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOverrideState("AVAILABLE")}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border flex items-center justify-center gap-2 transition-all ${
+                      overrideState === "AVAILABLE"
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs ring-2 ring-emerald-500/20"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span>🟢</span>
+                    <span>Available (Yes)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Support Group Selection Checkboxes */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Apply to Support Groups ({selectedGroupIds.length} of {personData.supportGroups.length} selected)
                   </label>
                   <button
                     type="button"
-                    onClick={handleSelectAllGroups}
-                    className="text-[11px] text-blue-600 hover:underline font-semibold"
+                    onClick={handleToggleAllGroups}
+                    className="text-[11px] font-semibold text-blue-600 hover:underline"
                   >
                     {selectedGroupIds.length === personData.supportGroups.length ? "Deselect All" : "Select All"}
                   </button>
                 </div>
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 max-h-40 overflow-y-auto">
-                  {personData.supportGroups.map((g) => (
-                    <label
-                      key={g.id}
-                      className="flex items-center gap-2.5 p-1.5 hover:bg-white rounded-lg cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedGroupIds.includes(g.id)}
-                        onChange={() => handleToggleGroup(g.id)}
-                        className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-slate-800 truncate">{g.name}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{g.company} &bull; {g.organization}</div>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          g.currentBmcAvailability ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+                <div className="max-h-40 overflow-y-auto space-y-1.5 border border-slate-200 rounded-lg p-2.5 bg-slate-50/50">
+                  {personData.supportGroups.map((g) => {
+                    const isChecked = selectedGroupIds.includes(g.id);
+                    return (
+                      <label
+                        key={g.id}
+                        className={`flex items-center justify-between p-2 rounded text-xs cursor-pointer border transition-colors ${
+                          isChecked
+                            ? "bg-white border-blue-300 text-slate-900 shadow-2xs"
+                            : "bg-transparent border-transparent text-slate-500 hover:bg-white/60"
                         }`}
                       >
-                        {g.currentBmcAvailability ? "Currently Yes" : "Currently No"}
-                      </span>
-                    </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleGroup(g.id)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="font-semibold">{g.name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">{g.company}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Duration Options */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Duration / Time Window
+                </label>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {[
+                    { id: "EOD", label: "Until End of Day" },
+                    { id: "2", label: "Next 2 Hours" },
+                    { id: "4", label: "Next 4 Hours" },
+                    { id: "8", label: "Next 8 Hours" },
+                    { id: "24", label: "Next 24 Hours" },
+                    { id: "INDEFINITE", label: "Indefinite" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setDurationOption(opt.id)}
+                      className={`p-2 rounded-lg border text-xs font-medium text-center transition-all ${
+                        durationOption === opt.id
+                          ? "bg-blue-50 border-blue-400 text-blue-800 font-bold shadow-2xs"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
                   ))}
                 </div>
               </div>
 
-              {/* Target State */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Target BMC Helix Assignment Availability</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setOverrideState("UNAVAILABLE")}
-                    className={`py-2 px-3 rounded-lg border font-semibold flex items-center justify-center gap-2 transition-all ${
-                      overrideState === "UNAVAILABLE"
-                        ? "bg-rose-50 border-rose-300 text-rose-800 shadow-2xs ring-1 ring-rose-300"
-                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    <span>🔴</span>
-                    <span>Offline (No)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOverrideState("AVAILABLE")}
-                    className={`py-2 px-3 rounded-lg border font-semibold flex items-center justify-center gap-2 transition-all ${
-                      overrideState === "AVAILABLE"
-                        ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs ring-1 ring-emerald-300"
-                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    <span>🟢</span>
-                    <span>Online (Yes)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Duration */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Duration of Override</label>
-                <select
-                  value={durationOption}
-                  onChange={(e) => setDurationOption(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                >
-                  <option value="EOD">End of Day (Until Midnight tonight)</option>
-                  <option value="2">2 Hours from now</option>
-                  <option value="4">4 Hours from now</option>
-                  <option value="8">8 Hours (Full Shift)</option>
-                  <option value="24">24 Hours from now</option>
-                  <option value="CUSTOM">Custom Hours</option>
-                  <option value="INDEFINITE">Indefinite (Until manually cancelled)</option>
-                </select>
-
-                {durationOption === "CUSTOM" && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="168"
-                      value={customHours}
-                      onChange={(e) => setCustomHours(e.target.value)}
-                      className="w-24 px-2 py-1.5 border border-slate-300 rounded-lg"
-                    />
-                    <span className="text-slate-500">hours from now</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Reason */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Reason for Audit Trail (Required)</label>
+              {/* Reason Input */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Audit Reason (Optional)
+                </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. End of shift, Doctor appointment, Sudden emergency leave"
+                  placeholder="e.g. End of shift / Engineer handover complete"
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 />
               </div>
 
-              {/* Actions */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  disabled={submittingOverride}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingOverride || selectedGroupIds.length === 0}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
                 >
-                  <span>⚡</span>
-                  <span>
-                    {submittingOverride
-                      ? "Pushing Live..."
-                      : `Set ${overrideState === "UNAVAILABLE" ? "Offline" : "Online"} for ${selectedGroupIds.length} Groups`}
-                  </span>
+                  {submittingOverride ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Pushing to BMC Helix...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>⚡</span>
+                      <span>
+                        Confirm & Set {overrideState === "UNAVAILABLE" ? "Offline" : "Available"} ({selectedGroupIds.length})
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
